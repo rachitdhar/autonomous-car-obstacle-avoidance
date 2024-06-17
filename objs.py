@@ -1,11 +1,11 @@
 import numpy as np
 import random
 
-INIT_POS = {'x': 20.0, 'y': 25.0}
+INIT_POS = {'x': 20.0, 'y': 25.0}   # initial position of car
 TIME_STEP = 0.1
 CAR_TO_OBSTACLE_STARTING_GAP = 20
-MIN_GAP = 2
-GAP_BETWEEN_COLS = 1
+MIN_GAP = 2                         # minimum gap between top and bottom parts of a column
+GAP_BETWEEN_COLS = 1                # horizontal gap between two conseutive obstacle columns
 
 class Car:
     width = 1
@@ -41,8 +41,10 @@ class Environment:
     prev_gap_bot = 0
     prev_gap_top = GRID_ROWS
 
+    last_obstacle_col_i = 0
+
     grid = np.zeros((GRID_ROWS, GRID_COLS))
-    shift_remaining = 0.0 # fractional shift from previous call of shift()
+    shift_remaining = 0.0               # fractional shift from previous call of shift()
 
     def __init__(self) -> None:
         self.setblocks(startfrom = int(INIT_POS['x'] + CAR_TO_OBSTACLE_STARTING_GAP))
@@ -67,6 +69,8 @@ class Environment:
                 else:
                     self.grid[row][i] = 0       # clear path
             
+            self.last_obstacle_col_i = i     # set the index of the last obstacle column
+
             # filling gapped cols with 0s
             curr_i = i + 1
             while (curr_i - i <= GAP_BETWEEN_COLS and curr_i < self.GRID_COLS):
@@ -85,7 +89,13 @@ class Environment:
         if (left == 0):
             return None
 
-        for i in range(0, self.GRID_COLS - left - 1):
-            self.grid[i,:] = self.grid[i + left,:]
-        
-        self.setblocks(startfrom = self.GRID_COLS - left)
+        for i in range(0, self.GRID_COLS - left):
+            self.grid[:,i] = self.grid[:,i + left]
+
+        self.last_obstacle_col_i -= left
+
+        if (self.last_obstacle_col_i + GAP_BETWEEN_COLS + 1 < self.GRID_COLS):
+            self.setblocks(startfrom = self.last_obstacle_col_i + GAP_BETWEEN_COLS + 1)
+        else:
+            for i in range(self.last_obstacle_col_i + 1, self.GRID_COLS):
+                self.grid[:,i] = 0
