@@ -18,6 +18,8 @@ def run():
     agent = Car()
     env = Environment()
 
+    has_collided = False
+
     # Set the size of the canvas
     rows = env.GRID_ROWS
     cols = env.GRID_COLS
@@ -31,21 +33,23 @@ def run():
     canvas.pack()
 
     def draw():
+        nonlocal has_collided
+
         # clear the canvas
         canvas.delete("all")
 
         # Draw the grid
         for i in range(rows):
             for j in range(cols):
-                x1 = j * cell_size
-                y1 = i * cell_size
-                x2 = x1 + cell_size
-                y2 = y1 + cell_size
-                color = "white" if env.grid[i][j] == 0 else "black"
-                canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
+                if env.grid[i][j] == 1:
+                    x1 = j * cell_size
+                    y1 = i * cell_size
+                    x2 = x1 + cell_size
+                    y2 = y1 + cell_size
+                    canvas.create_rectangle(x1, y1, x2, y2, fill="black", outline="")
         
         # Draw the car
-        canvas.create_rectangle(
+        car_id = canvas.create_rectangle(
             agent.gridpos()[0] * cell_size,
             agent.gridpos()[1] * cell_size,
             agent.gridpos()[0] * cell_size + cell_size * agent.length,
@@ -53,11 +57,18 @@ def run():
             fill="red",
             outline=""
         )
+        
+        # check if car if intersecting any obstacle (other than itself)
+        if len(canvas.find_overlapping(*canvas.bbox(car_id))) > 1:
+            has_collided = True
     
     def update():
+        nonlocal has_collided
         env.shift(1)
         draw()
-        root.after(UPDATE_TIME, update)
+
+        if not has_collided:
+            root.after(UPDATE_TIME, update)
 
     draw()
     update()
