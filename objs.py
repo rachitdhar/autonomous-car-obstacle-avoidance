@@ -15,16 +15,16 @@ class Car:
     angle = 0.0
     
     speed = 1.0
-    steer_angle = 0.0
 
     def __init__(self, length = None) -> None:
         if (length is not None):
             self.length = length
 
-    def update_pos(self):
-        self.angle += (self.speed * self.steer_angle * TIME_STEP) / self.length
-        self.pos[0] += (self.speed * np.cos(self.angle) * TIME_STEP)
+    # returns the x_shift so that the grid can then be shifted left by that amount
+    def update_pos(self, steer_angle):
+        self.angle += (self.speed * steer_angle * TIME_STEP) / self.length
         self.pos[1] += (self.speed * np.sin(self.angle) * TIME_STEP)
+        return (self.speed * np.cos(self.angle) * TIME_STEP)
 
     def accelerate(self, acceleration):
         self.speed += acceleration * TIME_STEP
@@ -99,3 +99,7 @@ class Environment:
         else:
             for i in range(self.last_obstacle_col_i + 1, self.GRID_COLS):
                 self.grid[:,i] = 0
+
+    # check collision
+    def intersectsWith(self, agent: Car):
+        pass
