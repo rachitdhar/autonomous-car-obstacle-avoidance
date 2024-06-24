@@ -9,24 +9,22 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-device = torch.device("cuda" if torch.cuda.is_available else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Defining the feed-forward neural network model
 
 class DQN(nn.Module):
     def __init__(self, in_states, h1, h2, out_actions):
-        super().__init__
+        super(DQN, self).__init__()
         self.first = nn.Linear(in_states, h1)
-        self.a1 = F.relu()
         self.second = nn.Linear(h1, h2)
-        self.a2 = F.relu()
         self.out = nn.Linear(h2, out_actions)
-        
+        self.to(device)
 
     def forward(self, x):
-        x = self.a1(self.first(x))
-        x = self.a2(self.second(x))
+        x = F.relu(self.first(x))
+        x = F.relu(self.second(x))
         x = self.out(x)
         return x
 
@@ -60,7 +58,7 @@ class ModelDQL:
     REPLAY_MEMORY_SIZE = 1000
     BATCH_SIZE = 50             # size of training data sampled from replay memory
     MIN_MEMORY_EXPERIENCE = 30  # min size of memory after which optmization can be performed
-    TRUNCATION_STEPS = 200      # number of steps after which to stop the training/testing for that epoch
+    TRUNCATION_STEPS = 1000      # number of steps after which to stop the training/testing for that epoch
 
     # NN
     loss_function = nn.MSELoss()
@@ -71,6 +69,7 @@ class ModelDQL:
         'normal_step': 1,
         'collision': -100,
         'no_x_motion': -1,
+        'backward_x_motion': -10,
         'turning': -0.1
     }
 
@@ -119,7 +118,7 @@ class ModelDQL:
             truncated = False       # to stop the training after a certain number of steps
             reward = 0.0
 
-            while (not terminated and not truncated):
+            while (not terminated and reward < 10.0):
                 # select action using epsilon-greedy method
                 action = 0
                 if random.random() < eps:
@@ -137,13 +136,13 @@ class ModelDQL:
 
                 # move to next state
                 state = new_state
-                step += 1
+                steps += 1
 
-                if (step > self.TRUNCATION_STEPS):
+                if (steps > self.TRUNCATION_STEPS):
                     truncated = True
 
             rewards_per_epoch[i] = reward
-
+            #print(np.sum(rewards_per_epoch))
             if (len(memory) > self.MIN_MEMORY_EXPERIENCE and np.sum(rewards_per_epoch) > 0.0):
                 batch = memory.sample(self.BATCH_SIZE)
                 
@@ -163,13 +162,13 @@ class ModelDQL:
 
         tot_reward = np.zeros(epochs)
         for i in range(epochs):
-            tot_reward[i] = rewards_per_epoch[max(0, i-100), i + 1]
+            tot_reward[i] = np.sum(rewards_per_epoch[max(0, i-100):(i + 1)])
         
         # plotting total reward history
         plt.figure(1)
         plt.subplot(1, 2, 1)
         plt.plot(tot_reward)
-
+        
         # plotting epsilon history
         plt.subplot(1, 2, 2)
         plt.plot(eps_history)
@@ -191,6 +190,9 @@ class ModelDQL:
             return [new_state, reward_change, False]
         elif abs(x_shift) < 0.01:
             reward_change = self.REWARDS['no_x_motion']
+            return [new_state, reward_change, False]
+        elif x_shift < 0.0:
+            reward_change = self.REWARDS['backward_x_motion']
             return [new_state, reward_change, False]
         else:
             reward_change = self.REWARDS['normal_step']
@@ -260,13 +262,12 @@ class ModelDQL:
         policyDQN.load_state_dict(torch.load("dql_policy.pt"))
         policyDQN.eval()    # to switch to evaluation mode
         
-        step = 0
+        steps = 0
         for i in range(epochs):
             state = self.getState(num_states)
             terminated = False      # True when agent falls in hole or reached goal
             truncated = False       # True when agent takes more than 200 actions            
 
-            # Agent navigates map until it falls into a hole (terminated), reaches goal (terminated), or has taken 200 actions (truncated).
             action = 0
             while(not terminated and not truncated):  
                 # Select best action
@@ -276,12 +277,12 @@ class ModelDQL:
                 # Execute action
                 state, reward_change, terminated = self.execute_action(action, num_states)
 
-                step += 1
-                if (step > self.TRUNCATION_STEPS):
+                steps += 1
+                if (steps > self.TRUNCATION_STEPS):
                     truncated = True
 
 
 if __name__ == "__main__":
-    model = ModelDQL().to(device)
+    model = ModelDQL()
     model.train(1000)
-    model.test(100)
+    model.test(10)

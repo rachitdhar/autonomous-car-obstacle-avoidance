@@ -100,6 +100,11 @@ class Environment:
             for i in range(self.last_obstacle_col_i + 1, self.GRID_COLS):
                 self.grid[:,i] = 0
 
-    # check collision
+    # check collision, and also check if car is inside the bounds of the window
     def intersectsWith(self, agent: Car):
-        pass
+        car_col, car_row = agent.gridpos()
+
+        if car_row < 0.0 or car_row > (self.GRID_ROWS - 1):
+            return True
+
+        return False
