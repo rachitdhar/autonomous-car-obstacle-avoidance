@@ -8,11 +8,11 @@ MIN_GAP = 2                         # minimum gap between top and bottom parts o
 GAP_BETWEEN_COLS = 1                # horizontal gap between two conseutive obstacle columns
 
 class Car:
-    width = 1
+    width = 1       # kept constant (so that car can be treated as a line in 2D)
     length = 3
 
-    pos = [INIT_POS['x'], INIT_POS['y']]
-    angle = 0.0
+    pos = [INIT_POS['x'], INIT_POS['y']]    # x and y are measured from the top left corner
+    angle = 0.0                             # clockwise is taken as positive
     
     speed = 1.0
 
@@ -34,6 +34,29 @@ class Car:
         return (int(self.pos[0]), int(self.pos[1]))
 
 
+class Line:
+    def __init__(self, x1, y1, x2, y2):
+        self.x_small, self.x_big = [x1, x2] if (x1 <= x2) else [x2, x1]
+        self.y_small, self.y_big = [y1, y2] if (y1 <= y2) else [y2, y1]
+    
+    # determines whether the line is intersecting a vertical line between (y1, y2)
+    def isLineIntersecting(self, x, y1, y2)->bool:
+        if (x < self.x_small or x > self.x_big):
+            return False
+        
+        if (abs(self.x_small - self.x_big) < 0.01):
+            if (self.y_small > y1 and self.y_big < y2):
+                return False
+            return True
+
+        slope = float(self.y_big - self.y_small) / (self.x_big - self.x_small)
+        y_at_x = self.y_small + slope * (x - self.x_small)
+        
+        if (y1 < y_at_x < y2):
+            return False
+        return True
+
+
 class Environment:
     GRID_ROWS = 50
     GRID_COLS = 100
@@ -43,7 +66,10 @@ class Environment:
 
     last_obstacle_col_i = 0
 
-    grid = np.zeros((GRID_ROWS, GRID_COLS))
+    grid = np.zeros((GRID_ROWS, GRID_COLS))     # stores the obstacle grid.
+    gridInfo = np.zeros((2, GRID_COLS))         # stores the lowermost top obstacle index, uppermost bottom obstacle index
+                                                # If no obstacle in the column, then both set to -1.
+    
     shift_remaining = 0.0               # fractional shift from previous call of shift()
 
     def __init__(self) -> None:
@@ -62,6 +88,7 @@ class Environment:
             
             i_top = self.GRID_ROWS - gap_top - 1        # index of the lowermost top obstacle
             i_bot = self.GRID_ROWS - gap_bot            # index of the uppermost bottom obstacle
+            self.gridInfo[0][i], self.gridInfo[1][i] = i_top, i_bot
 
             for row in range(0, self.GRID_ROWS):
                 if (row <= i_top or row >= i_bot):
@@ -76,6 +103,7 @@ class Environment:
             while (curr_i - i <= GAP_BETWEEN_COLS and curr_i < self.GRID_COLS):
                 for row in range(0, self.GRID_ROWS):
                     self.grid[row][curr_i] = 0
+                    self.gridInfo[:][curr_i] = -1
                 curr_i += 1
 
             self.prev_gap_bot = gap_bot
@@ -91,6 +119,7 @@ class Environment:
 
         for i in range(0, self.GRID_COLS - left):
             self.grid[:,i] = self.grid[:,i + left]
+            self.gridInfo[:,i] = self.gridInfo[:,i + left]
 
         self.last_obstacle_col_i -= left
 
@@ -99,12 +128,34 @@ class Environment:
         else:
             for i in range(self.last_obstacle_col_i + 1, self.GRID_COLS):
                 self.grid[:,i] = 0
+                self.gridInfo[:,i] = -1
 
     # check collision, and also check if car is inside the bounds of the window
     def intersectsWith(self, agent: Car):
-        car_col, car_row = agent.gridpos()
+        car_x, car_y = agent.pos()
 
-        if car_row < 0.0 or car_row > (self.GRID_ROWS - 1):
+        if int(car_y) < 0 or int(car_x) > (self.GRID_ROWS - 1):
             return True
+        
+        car_x2 = car_x + agent.length * np.cos(agent.angle)
+        car_y2 = car_y + agent.length * np.sin(agent.angle)
+        car_line = Line(car_x, car_y, car_x2, car_y2)
+
+        # The car will be treated as a line (since its width is fixed to 1)
+        # To find the intersection of a line with an obstacle column, we just need
+        # to check a certain simple condition
+
+        for col in range(self.GRID_COLS):
+            if ((col > car_x and col > car_x2) or (col < car_x and col < car_x2)):
+                continue
+            
+            if (self.gridInfo[0] == -1):
+                continue
+            
+            i_top, i_bot = self.gridInfo[0][col], self.gridInfo[1][col]
+
+            if (car_line.isLineIntersecting(col, 0, i_top) or \
+                car_line.isLineIntersecting(col, i_bot, self.GRID_ROWS - 1)):
+                return True
 
         return False
