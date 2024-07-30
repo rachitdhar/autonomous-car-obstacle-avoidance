@@ -7,6 +7,8 @@ Here, Deep Q-Learning (DQN, for Deep Q-Networks) is used, by considering the act
 
 ## To Run
 
+**Installation of packages**: Run 'pip install -r requirements.txt' inside an environment to install the needed packages.
+
 - **objs.py** : this file contains class definitions for Car and Environment. NOT RUNNABLE AS MAIN.
 - **simulate.py** : this file is the main file that would be meant to be run, where the graphics for displaying the window with the car and the obstacle grid are created.
 - **train.py** : this file is used to train the model, and test its performance.

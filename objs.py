@@ -103,7 +103,7 @@ class Environment:
             while (curr_i - i <= GAP_BETWEEN_COLS and curr_i < self.GRID_COLS):
                 for row in range(0, self.GRID_ROWS):
                     self.grid[row][curr_i] = 0
-                    self.gridInfo[:][curr_i] = -1
+                    self.gridInfo[:,curr_i] = -1
                 curr_i += 1
 
             self.prev_gap_bot = gap_bot
@@ -132,7 +132,7 @@ class Environment:
 
     # check collision, and also check if car is inside the bounds of the window
     def intersectsWith(self, agent: Car):
-        car_x, car_y = agent.pos()
+        car_x, car_y = agent.pos
 
         if int(car_y) < 0 or int(car_x) > (self.GRID_ROWS - 1):
             return True
@@ -148,8 +148,8 @@ class Environment:
         for col in range(self.GRID_COLS):
             if ((col > car_x and col > car_x2) or (col < car_x and col < car_x2)):
                 continue
-            
-            if (self.gridInfo[0] == -1):
+
+            if (self.gridInfo[0][col] == -1):
                 continue
             
             i_top, i_bot = self.gridInfo[0][col], self.gridInfo[1][col]

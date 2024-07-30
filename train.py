@@ -3,6 +3,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from collections import deque
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -53,24 +54,27 @@ class ModelDQL:
     env = Environment()
     
     # Hyperparameters
-    LEARNING_RATE = 0.01
+    LEARNING_RATE = 0.001
     DISCOUNT_FACTOR = 0.9
     REPLAY_MEMORY_SIZE = 1000
-    BATCH_SIZE = 50             # size of training data sampled from replay memory
+    BATCH_SIZE = 256             # size of training data sampled from replay memory
     MIN_MEMORY_EXPERIENCE = 30  # min size of memory after which optmization can be performed
-    TRUNCATION_STEPS = 1000      # number of steps after which to stop the training/testing for that epoch
+    TRUNCATION_STEPS = 200      # number of steps after which to stop the training/testing for that epoch
+
+    EPS_START = 1.0
+    EPS_END = 0.01
 
     # NN
     loss_function = nn.MSELoss()
     optimizer = None    # initialized later
-    nn_sync_rate = 10   # number of steps the policy NN takes before syncing to target NN
+    nn_sync_rate = 50   # number of steps the policy NN takes before syncing to target NN
     
     REWARDS = {
         'normal_step': 1,
-        'collision': -100,
-        'no_x_motion': -1,
-        'backward_x_motion': -10,
-        'turning': -0.1
+        'collision': -1,
+        'no_x_motion': -0.1,
+        'backward_x_motion': -0.2,
+        'turning': -0.01
     }
 
     # number of multiples of the car length that should be covered horizontally in the state
@@ -95,7 +99,7 @@ class ModelDQL:
         HIDDEN_LAYERS = [100, 50]
 
         memory = ReplayMemory(self.REPLAY_MEMORY_SIZE)
-        eps = 1     # epsilon initialized to 100% (select completely random actions initially)
+        eps = self.EPS_START     # epsilon initialized to 100% (select completely random actions initially)
         eps_history = []
 
         # creating policy NN and target NN (and then copying the weights and biases of policy into target)
@@ -111,53 +115,55 @@ class ModelDQL:
 
         steps = 0
 
-        for i in range(epochs):
-            # initialize state
-            state = self.getState(num_states)
-            terminated = False
-            truncated = False       # to stop the training after a certain number of steps
-            reward = 0.0
-
-            while (not terminated and reward < 10.0):
-                # select action using epsilon-greedy method
-                action = 0
-                if random.random() < eps:
-                    action = self.ACTIONS[random.randint(0, len(self.ACTIONS) - 1)]
-                else:
-                    with torch.no_grad():
-                        action = policyDQN(self.getState(num_states, state)).argmax().item()
-
-                # execute action and retrieve new state and reward
-                new_state, reward_change, terminated = self.execute_action(action, num_states)
-                reward += reward_change
-
-                # save in memory
-                memory.push((state, action, new_state, reward, terminated))
-
-                # move to next state
-                state = new_state
-                steps += 1
-
-                if (steps > self.TRUNCATION_STEPS):
-                    truncated = True
-
-            rewards_per_epoch[i] = reward
-            #print(np.sum(rewards_per_epoch))
-            if (len(memory) > self.MIN_MEMORY_EXPERIENCE and np.sum(rewards_per_epoch) > 0.0):
-                batch = memory.sample(self.BATCH_SIZE)
+        with tqdm(total=epochs, desc="Training", ncols=100) as pbar:
+            for i in range(epochs):
+                # initialize state
+                state = self.getState(num_states)
+                terminated = False
+                truncated = False       # to stop the training after a certain number of steps
+                reward = 0.0
                 
-                # optimze
-                self.optimize(batch, policyDQN, targetDQN)
+                while (not terminated and not truncated):
+                    # select action using epsilon-greedy method
+                    action = 0
+                    if random.random() < eps:
+                        action = self.ACTIONS[random.randint(0, len(self.ACTIONS) - 1)]
+                    else:
+                        with torch.no_grad():
+                            action = policyDQN(self.getState(num_states, state)).argmax().item()
 
-                # decay epsilon
-                eps = max(0, eps - 1.0/epochs)
-                eps_history.append(eps)
+                    # execute action and retrieve new state and reward
+                    new_state, reward_change, terminated = self.execute_action(action, num_states)
+                    reward += reward_change
 
-                # copy into target if min steps for sync achieved
-                if (steps > self.nn_sync_rate):
-                    targetDQN.load_state_dict(policyDQN.state_dict())
-                    steps = 0
-        
+                    # save in memory
+                    memory.push((state, action, new_state, reward, terminated))
+
+                    # move to next state
+                    state = new_state
+                    steps += 1
+
+                    if (steps > self.TRUNCATION_STEPS):
+                        truncated = True
+
+                rewards_per_epoch[i] = reward
+                #print(np.sum(rewards_per_epoch))
+                if (len(memory) > self.MIN_MEMORY_EXPERIENCE and np.sum(rewards_per_epoch) > 0.0):
+                    batch = memory.sample(self.BATCH_SIZE)
+                    
+                    # optimze
+                    self.optimize(batch, policyDQN, targetDQN)
+
+                    # decay epsilon
+                    eps = self.EPS_END + (self.EPS_START - self.EPS_END) * np.exp(-1. * steps / epochs)
+                    eps_history.append(eps)
+
+                    # copy into target if min steps for sync achieved
+                    if (steps > self.nn_sync_rate):
+                        targetDQN.load_state_dict(policyDQN.state_dict())
+                        steps = 0
+                pbar.update(1)
+
         torch.save(policyDQN.state_dict(), "dql_policy.pt")
 
         tot_reward = np.zeros(epochs)
@@ -237,12 +243,11 @@ class ModelDQL:
 
 
     def getState(self, num_states, state = None)->torch.Tensor:
-        state_tensor = None
+        state_tensor = torch.zeros(num_states)
         car_col = self.agent.gridpos()[0]
 
         if (state is None):
             i = 0
-            state_tensor = torch.zeros(num_states)
             for col in range(car_col - self.agent.length, car_col + self.agent.length * (self.RANGE_OF_VISIBILITY - 1)):
                 for row in range(0, self.env.GRID_ROWS):
                     state_tensor[i] = self.env.grid[row][col]
@@ -263,26 +268,28 @@ class ModelDQL:
         policyDQN.eval()    # to switch to evaluation mode
         
         steps = 0
-        for i in range(epochs):
-            state = self.getState(num_states)
-            terminated = False      # True when agent falls in hole or reached goal
-            truncated = False       # True when agent takes more than 200 actions            
 
-            action = 0
-            while(not terminated and not truncated):  
-                # Select best action
-                with torch.no_grad():
-                    action = policyDQN(self.getState(num_states, state)).argmax().item()
+        with tqdm(total=epochs, desc="Testing", ncols=100) as pbar:
+            for i in range(epochs):
+                state = self.getState(num_states)
+                terminated = False      # True when agent falls in hole or reached goal
+                truncated = False       # True when agent takes more than 200 actions            
 
-                # Execute action
-                state, reward_change, terminated = self.execute_action(action, num_states)
+                action = 0
+                while(not terminated and not truncated):  
+                    # Select best action
+                    with torch.no_grad():
+                        action = policyDQN(self.getState(num_states, state)).argmax().item()
 
-                steps += 1
-                if (steps > self.TRUNCATION_STEPS):
-                    truncated = True
+                    # Execute action
+                    state, reward_change, terminated = self.execute_action(action, num_states)
 
+                    steps += 1
+                    if (steps > self.TRUNCATION_STEPS):
+                        truncated = True
+                pbar.update(1)
 
 if __name__ == "__main__":
     model = ModelDQL()
-    model.train(1000)
+    model.train(10000)
     model.test(10)
