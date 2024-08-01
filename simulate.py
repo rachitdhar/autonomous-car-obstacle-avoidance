@@ -59,7 +59,10 @@ def run():
         )
         
         # check if car if intersecting any obstacle (other than itself)
-        if len(canvas.find_overlapping(*canvas.bbox(car_id))) > 1:
+        
+        # if len(canvas.find_overlapping(*canvas.bbox(car_id))) > 1:
+        #     has_collided = True
+        if env.intersectsWith(agent):
             has_collided = True
     
     def update():

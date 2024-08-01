@@ -22,7 +22,7 @@ class Car:
 
     # returns the x_shift so that the grid can then be shifted left by that amount
     def update_pos(self, steer_angle):
-        self.angle += (self.speed * steer_angle * TIME_STEP) / self.length
+        self.angle += (self.speed * steer_angle * np.pi * TIME_STEP) / (self.length * 180)
         self.pos[1] += (self.speed * np.sin(self.angle) * TIME_STEP)
         return (self.speed * np.cos(self.angle) * TIME_STEP)
 
@@ -67,7 +67,7 @@ class Environment:
     last_obstacle_col_i = 0
 
     grid = np.zeros((GRID_ROWS, GRID_COLS))     # stores the obstacle grid.
-    gridInfo = np.zeros((2, GRID_COLS))         # stores the lowermost top obstacle index, uppermost bottom obstacle index
+    gridInfo = np.full((2, GRID_COLS), -1)      # stores the lowermost top obstacle index, uppermost bottom obstacle index
                                                 # If no obstacle in the column, then both set to -1.
     
     shift_remaining = 0.0               # fractional shift from previous call of shift()
