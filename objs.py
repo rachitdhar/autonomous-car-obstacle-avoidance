@@ -3,28 +3,35 @@ import random
 
 INIT_POS = {'x': 20.0, 'y': 25.0}   # initial position of car
 TIME_STEP = 0.1
-CAR_TO_OBSTACLE_STARTING_GAP = 20
-MIN_GAP = 2                         # minimum gap between top and bottom parts of a column
+CAR_TO_OBSTACLE_STARTING_GAP = 10
+MIN_GAP = 10                         # minimum gap between top and bottom parts of a column
 GAP_BETWEEN_COLS = 1                # horizontal gap between two conseutive obstacle columns
 
 class Car:
-    width = 1       # kept constant (so that car can be treated as a line in 2D)
-    length = 3
-
-    pos = [INIT_POS['x'], INIT_POS['y']]    # x and y are measured from the top left corner
-    angle = 0.0                             # clockwise is taken as positive
-    
-    speed = 1.0
-
-    def __init__(self, length = None) -> None:
+    def __init__(self, length = None):
         if (length is not None):
             self.length = length
+        
+        self.width = 1       # kept constant (so that car can be treated as a line in 2D)
+        self.length = 3
+
+        self.pos = [INIT_POS['x'], INIT_POS['y']]    # x and y are measured from the top left corner
+        self.angle = 0.0                             # clockwise is taken as positive
+    
+        self.speed = 10.0
 
     # returns the x_shift so that the grid can then be shifted left by that amount
     def update_pos(self, steer_angle):
         self.angle += (self.speed * steer_angle * np.pi * TIME_STEP) / (self.length * 180)
+        
+        # keeping angle between -90 to +90 degrees (so that car does not go backwards)
+        if self.angle > (np.pi / 2):
+            self.angle = np.pi / 2
+        elif self.angle < -(np.pi / 2):
+            self.angle = -np.pi / 2
+
         self.pos[1] += (self.speed * np.sin(self.angle) * TIME_STEP)
-        return (self.speed * np.cos(self.angle) * TIME_STEP)
+        return abs(self.speed * np.cos(self.angle) * TIME_STEP)
 
     def accelerate(self, acceleration):
         self.speed += acceleration * TIME_STEP
@@ -52,27 +59,25 @@ class Line:
         slope = float(self.y_big - self.y_small) / (self.x_big - self.x_small)
         y_at_x = self.y_small + slope * (x - self.x_small)
         
-        if (y1 < y_at_x < y2):
-            return False
-        return True
+        if (y1 < y_at_x and y_at_x < y2):
+            return True
+        return False
 
 
 class Environment:
-    GRID_ROWS = 50
-    GRID_COLS = 100
+    def __init__(self):
+        self.GRID_ROWS = 50
+        self.GRID_COLS = 100
 
-    prev_gap_bot = 0
-    prev_gap_top = GRID_ROWS
+        self.prev_gap_bot = 0
+        self.prev_gap_top = self.GRID_ROWS
 
-    last_obstacle_col_i = 0
+        self.last_obstacle_col_i = 0
 
-    grid = np.zeros((GRID_ROWS, GRID_COLS))     # stores the obstacle grid.
-    gridInfo = np.full((2, GRID_COLS), -1)      # stores the lowermost top obstacle index, uppermost bottom obstacle index
-                                                # If no obstacle in the column, then both set to -1.
-    
-    shift_remaining = 0.0               # fractional shift from previous call of shift()
-
-    def __init__(self) -> None:
+        self.grid = np.zeros((self.GRID_ROWS, self.GRID_COLS))      # stores the obstacle grid.
+        self.gridInfo = np.full((2, self.GRID_COLS), -1)            # stores the lowermost top obstacle index, uppermost bottom obstacle index
+                                                                    # If no obstacle in the column, then both set to -1.
+        self.shift_remaining = 0.0               # fractional shift from previous call of shift()
         self.setblocks(startfrom = int(INIT_POS['x'] + CAR_TO_OBSTACLE_STARTING_GAP))
 
     def setblocks(self, startfrom):
@@ -131,11 +136,12 @@ class Environment:
                 self.gridInfo[:,i] = -1
 
     # check collision, and also check if car is inside the bounds of the window
+    # function return [isIntersecting, reward]            
     def intersectsWith(self, agent: Car):
         car_x, car_y = agent.pos
 
-        if int(car_y) < 0 or int(car_x) > (self.GRID_ROWS - 1):
-            return True
+        if int(car_y) < 0 or int(car_y) > (self.GRID_ROWS - 1):
+            return [True, 0]
         
         car_x2 = car_x + agent.length * np.cos(agent.angle)
         car_y2 = car_y + agent.length * np.sin(agent.angle)
@@ -144,6 +150,8 @@ class Environment:
         # The car will be treated as a line (since its width is fixed to 1)
         # To find the intersection of a line with an obstacle column, we just need
         # to check a certain simple condition
+
+        reward = 0
 
         for col in range(self.GRID_COLS):
             if ((col > car_x and col > car_x2) or (col < car_x and col < car_x2)):
@@ -154,8 +162,10 @@ class Environment:
             
             i_top, i_bot = self.gridInfo[0][col], self.gridInfo[1][col]
 
-            if (car_line.isLineIntersecting(col, 0, i_top) or \
-                car_line.isLineIntersecting(col, i_bot, self.GRID_ROWS - 1)):
-                return True
+            if (car_line.isLineIntersecting(col, 0, i_top) or car_line.isLineIntersecting(col, i_bot, self.GRID_ROWS - 1)):
+                reward = 0
+                return [True, 0]
+            else:
+                reward = 10
 
-        return False
+        return [False, reward]

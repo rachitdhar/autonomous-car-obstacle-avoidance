@@ -10,12 +10,15 @@ from renderer import Renderer
 
 
 MODEL_REGISTER_NAME = 'CarNavigation-v0'
-EPSILON = 1e-2
+EPSILON = 0.5
 
-ACTION_TO_STEER_ANGLE_MULTIPLIER = 30.0
+ACTION_TO_STEER_ANGLE_MULTIPLIER = 60.0
+
+def timeBasedReward(timestep):
+    return (np.sqrt(timestep) if timestep < 100 else 10)
 
 class CarNavigationEnv(gym.Env):
-    metadata = {'render.modes': ['human'], "render_fps": 4}
+    metadata = {'render.modes': ['human'], "render.fps": 8}
 
     def __init__(self, render_mode=None):
         super(CarNavigationEnv, self).__init__()
@@ -25,24 +28,27 @@ class CarNavigationEnv(gym.Env):
         self.car = Car()
         self.renderer = None
 
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        assert render_mode is None or render_mode in self.metadata["render.modes"]
         self.render_mode = render_mode
 
         # defining the action and observation spaces
         self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
-        self.observation_space = spaces.Box(
-            low=np.array([0, 0, -np.pi, 0] + [0] * (self.env.GRID_ROWS * self.env.GRID_COLS)),
-            high=np.array([self.env.GRID_COLS, self.env.GRID_ROWS, np.pi, np.inf] + [1] * (self.env.GRID_ROWS * self.env.GRID_COLS)),
-            dtype=np.float32
-        )
+        
+        self.observation_space = spaces.Dict({
+            'angle': spaces.Box(low=np.array([-np.pi / 2]), high=np.array([np.pi / 2]), dtype=np.float32),
+            'position': spaces.Box(low=np.array([0, 0]), high=np.array([self.env.GRID_COLS, self.env.GRID_ROWS]), dtype=np.float32),
+            'speed': spaces.Box(low=np.array([0]), high=np.array([100]), dtype=np.float32),
+            'grid': spaces.Box(low=0, high=1, shape=(self.env.GRID_ROWS, self.env.GRID_COLS), dtype=np.int32)
+        })
 
         # setting limit
         self.max_steps = 1000
         self.current_step = 0
         
         # rendering speed (during testing)
-        self.fps = self.metadata["render_fps"]
+        self.fps = self.metadata["render.fps"]
 
+        # to log the steer angle and x_shift, and see when collision occurs
         self.log_line = []
 
     def step(self, action):
@@ -59,7 +65,8 @@ class CarNavigationEnv(gym.Env):
         self.log_line.append(f"{steer_angle} {x_shift}\n")
         
         # Check if done
-        done = self.env.intersectsWith(self.car) or self.current_step >= self.max_steps
+        isIntersecting, gapPassingReward = self.env.intersectsWith(self.car)
+        done = isIntersecting or self.current_step >= self.max_steps
 
         # Calculate reward
         reward = 1
@@ -67,9 +74,13 @@ class CarNavigationEnv(gym.Env):
         if done:
             reward = -100
             self.log_line.append(f"---COLLISION---")
-        elif 0.0 <= abs(x_shift) <= EPSILON:
+        elif abs(x_shift) <= EPSILON:
             reward = -10
-
+        else:
+            reward += timeBasedReward(self.current_step)
+            
+        reward += gapPassingReward
+        
         # Get observation
         observation = self._get_obs()
 
@@ -106,11 +117,12 @@ class CarNavigationEnv(gym.Env):
             self.renderer = None
     
     def _get_obs(self):
-        return np.concatenate([
-            self.car.pos,
-            [self.car.angle, self.car.speed],
-            self.env.grid.flatten()
-        ]).astype(np.float32)
+        return {
+            'angle': np.array([self.car.angle], dtype=np.float32),
+            'position': np.array(self.car.pos, dtype=np.float32),
+            'speed': np.array([self.car.speed], dtype=np.float32),
+            'grid': self.env.grid.astype(np.int32)
+        }
 
 
 def register_env():

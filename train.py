@@ -1,6 +1,5 @@
 import gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from CarNavigationGymEnv import MODEL_REGISTER_NAME
 from CarNavigationGymEnv import CarNavigationEnv, register_env
@@ -11,13 +10,12 @@ def main():
 
     # Create the environment
     env = gym.make(MODEL_REGISTER_NAME)
-    #env = DummyVecEnv([lambda: gym.make(MODEL_REGISTER_NAME)])  # Wrap in a DummyVecEnv
 
     # Initialize the agent
-    model = PPO("MlpPolicy", env, verbose=1, learning_rate=3e-4, n_steps=2048, batch_size=64)
+    model = PPO("MultiInputPolicy", env, verbose=1, learning_rate=5e-3, n_steps=512, batch_size=128)
 
     # Train the agent
-    total_timesteps = 10000  # Adjust this based on your needs
+    total_timesteps = 100000
     model.learn(total_timesteps=total_timesteps, progress_bar=True)
 
     # Save the trained model
