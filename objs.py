@@ -1,3 +1,4 @@
+from enum import Enum
 import numpy as np
 import random
 
@@ -5,7 +6,7 @@ INIT_POS = {'x': 20.0, 'y': 25.0}   # initial position of car
 TIME_STEP = 0.1
 CAR_TO_OBSTACLE_STARTING_GAP = 10
 MIN_GAP = 10                         # minimum gap between top and bottom parts of a column
-GAP_BETWEEN_COLS = 1                # horizontal gap between two conseutive obstacle columns
+GAP_BETWEEN_COLS = 3                # horizontal gap between two conseutive obstacle columns
 
 class Car:
     def __init__(self, length = None):
@@ -141,7 +142,7 @@ class Environment:
         car_x, car_y = agent.pos
 
         if int(car_y) < 0 or int(car_y) > (self.GRID_ROWS - 1):
-            return [True, 0]
+            return [True, "Hit Border"]
         
         car_x2 = car_x + agent.length * np.cos(agent.angle)
         car_y2 = car_y + agent.length * np.sin(agent.angle)
@@ -151,7 +152,7 @@ class Environment:
         # To find the intersection of a line with an obstacle column, we just need
         # to check a certain simple condition
 
-        reward = 0
+        envInteractionType = "None"
 
         for col in range(self.GRID_COLS):
             if ((col > car_x and col > car_x2) or (col < car_x and col < car_x2)):
@@ -163,9 +164,8 @@ class Environment:
             i_top, i_bot = self.gridInfo[0][col], self.gridInfo[1][col]
 
             if (car_line.isLineIntersecting(col, 0, i_top) or car_line.isLineIntersecting(col, i_bot, self.GRID_ROWS - 1)):
-                reward = 0
-                return [True, 0]
+                return [True, "Collided"]
             else:
-                reward = 10
+                envInteractionType = "Gap Crossed"
 
-        return [False, reward]
+        return [False, envInteractionType]

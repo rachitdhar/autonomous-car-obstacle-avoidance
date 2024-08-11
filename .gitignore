@@ -2,7 +2,13 @@ env/
 __pycache__/
 *.pt
 *.zip
+*.png
 log.txt
+training-results/
+episode_paths.pkl
+
+### VSCode ###
+.vscode
 
 ### VisualStudio ###
 ## Ignore Visual Studio temporary files, build results, and

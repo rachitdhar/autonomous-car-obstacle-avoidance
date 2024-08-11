@@ -29,4 +29,4 @@ def test_trained_model(model_path, num_episodes=10):
     env.close()
 
 if __name__ == '__main__':
-    test_trained_model("ppo_car_navigation", num_episodes=10)
+    test_trained_model("ppo_car_navigation", num_episodes=100)

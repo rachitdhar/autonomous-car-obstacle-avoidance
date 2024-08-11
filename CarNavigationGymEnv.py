@@ -4,18 +4,49 @@ from gym import spaces
 from gym.envs.registration import register
 from gym import error as gym_error
 import time
+import matplotlib
+import matplotlib.pyplot as plt
+import pickle
 
 from objs import Car, Environment
 from renderer import Renderer
 
 
 MODEL_REGISTER_NAME = 'CarNavigation-v0'
-EPSILON = 0.5
 
-ACTION_TO_STEER_ANGLE_MULTIPLIER = 60.0
+MIN_ANGLE_TO_PUNISH = 45    # at and above this angle, a small negative reward is added
+EPSILON = np.cos(MIN_ANGLE_TO_PUNISH * np.pi / 180)
 
-def timeBasedReward(timestep):
-    return (np.sqrt(timestep) if timestep < 100 else 10)
+ACTION_TO_STEER_ANGLE_MULTIPLIER = 90
+UNNECESSARY_STEER_ANGLE_LIMIT = 0.1
+
+
+mapInteractionToReward = {
+    "None": 0,
+    "Collided": -5,
+    "Hit Border": -7,
+    "Gap Crossed": 15,
+    "Not Moving Forward": -1,
+    "Moving Forward": 1,
+    "Steering": -0.5
+}
+
+def RewardSystem(done, x_shift, envInteractionType, steer_angle):
+    reward = 0
+    if done:
+        return mapInteractionToReward[envInteractionType]   # collision (with obstacle or border)
+    
+    if abs(steer_angle) > UNNECESSARY_STEER_ANGLE_LIMIT:
+        reward += mapInteractionToReward['Steering']        # Avoid unnecessary steering
+    
+    if x_shift <= EPSILON:
+        reward += mapInteractionToReward['Not Moving Forward']     # not moving forward enough
+    else:
+        reward += mapInteractionToReward['Moving Forward']         # moving forward
+    
+    reward += mapInteractionToReward[envInteractionType]    # passes through a gap
+    return reward
+
 
 class CarNavigationEnv(gym.Env):
     metadata = {'render.modes': ['human'], "render.fps": 8}
@@ -42,14 +73,18 @@ class CarNavigationEnv(gym.Env):
         })
 
         # setting limit
-        self.max_steps = 1000
+        self.max_steps = 10000
         self.current_step = 0
         
         # rendering speed (during testing)
         self.fps = self.metadata["render.fps"]
 
-        # to log the steer angle and x_shift, and see when collision occurs
-        self.log_line = []
+        # keeping episode count and path
+        self.episode_count = 0
+        self.all_episode_paths = []
+
+        # Store car positions for plotting
+        self.positions = []
 
     def step(self, action):
         self.current_step += 1
@@ -59,27 +94,18 @@ class CarNavigationEnv(gym.Env):
         acceleration = action[1]
 
         x_shift = self.car.update_pos(steer_angle)
-        #self.car.accelerate(acceleration)
+        self.car.accelerate(acceleration)
         self.env.shift(x_shift)
 
-        self.log_line.append(f"{steer_angle} {x_shift}\n")
+        prev_x_pos = 0 if self.positions == [] else self.positions[-1][0]
+        self.positions.append([prev_x_pos + x_shift, self.car.pos[1]])  # Store the position
         
         # Check if done
-        isIntersecting, gapPassingReward = self.env.intersectsWith(self.car)
+        isIntersecting, envInteractionType = self.env.intersectsWith(self.car)
         done = isIntersecting or self.current_step >= self.max_steps
 
         # Calculate reward
-        reward = 1
-
-        if done:
-            reward = -100
-            self.log_line.append(f"---COLLISION---")
-        elif abs(x_shift) <= EPSILON:
-            reward = -10
-        else:
-            reward += timeBasedReward(self.current_step)
-            
-        reward += gapPassingReward
+        reward = RewardSystem(done, x_shift, envInteractionType, steer_angle)
         
         # Get observation
         observation = self._get_obs()
@@ -90,15 +116,19 @@ class CarNavigationEnv(gym.Env):
         return observation, reward, done, info
     
     def reset(self):
+        if self.current_step > 0:  # Not the first reset
+            self.all_episode_paths.append(np.array(self.positions))
+            self.episode_count += 1
+
         self.env = Environment()
         self.car = Car()
         self.current_step = 0
+        self.positions = []  # Reset positions for new episode
         
         if self.renderer is not None:
             self.renderer.env = self.env
             self.renderer.car = self.car
         
-        self.log_line.append("\n-------------\n")
         return self._get_obs()
     
     def render(self, mode='human'):
@@ -109,12 +139,12 @@ class CarNavigationEnv(gym.Env):
             time.sleep(1.0 / self.fps)  # Control the FPS
 
     def close(self):
-        with open('log.txt', 'a') as log:
-            log.writelines(self.log_line)
-        
         if self.renderer is not None:
             self.renderer.close()
             self.renderer = None
+        
+        # Close the plot
+        plt.close('all')
     
     def _get_obs(self):
         return {
@@ -123,6 +153,24 @@ class CarNavigationEnv(gym.Env):
             'speed': np.array([self.car.speed], dtype=np.float32),
             'grid': self.env.grid.astype(np.int32)
         }
+    
+    def display_all_paths(self, savePlotData = False):
+        # write the data into a file (optional)
+        if savePlotData:
+            with open("episode_paths.pkl", 'wb') as fpaths:
+                pickle.dump(self.all_episode_paths, fpaths)
+        
+        plt.figure(figsize=(10, 8))
+        for i, path in enumerate(self.all_episode_paths):
+            plt.plot(path[:, 0], path[:, 1], label=f'Episode {i+1}')
+        
+        #plt.xlim(0, self.env.GRID_COLS)
+        plt.ylim(0, self.env.GRID_ROWS)
+        plt.title(f"Paths for {self.episode_count} Episodes")
+        plt.xlabel("X position")
+        plt.ylabel("Y position")
+        
+        plt.show(block=True)  # This will keep the plot window open
 
 
 def register_env():
