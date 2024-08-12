@@ -20,8 +20,8 @@ The first plot is for the model run with a learning rate of 1e-2, 32 steps, and 
 The second set of plots is taken later, after trying out multiple iterations of the model with different sets of hyperparameters. Here, a learning rate of 3e-4 is taken, with 4096 steps, and batch size of 256, run over 2 million time-steps.
 This model is able to reach the 400 unit mark in the x-position, which is an approximately 10 fold improvement in forward-motion-performance. I check using two different reward systems, and there is a slight difference in terms of the divergence of the paths in the initial stages of training.
 
-![Improved Model (a)](media/2M-lr3.4-ns4096-b256 -- R2.png)
-![Improved Model (b)](media/2M-lr3.4-ns4096-b256 -- R3.png)
+![Improved Model (a)](media/2M-lr3.4-ns4096-b256--R2.png)
+![Improved Model (b)](media/2M-lr3.4-ns4096-b256--R3.png)
 
 Here is a short clip of running the model during testing, for a few episodes:
 
